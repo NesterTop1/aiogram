@@ -1,9 +1,4 @@
 from aiogram.types import reply_keyboard
-#from config import *
-#from sqlite import *
-#from buttons import *
-#from states import *
-#from freesteam import parse_link
 
 import logging
 
@@ -18,7 +13,7 @@ from aiogram.utils import executor
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher import filters
 import asyncio
-#from aiogram.utils.keyboard import ReplyKeyboardBuilder
+#import aioschedule
 
 
 from config import TOKEN
@@ -47,6 +42,8 @@ class Form(StatesGroup):
     projected = State()
     connect = State()  
     calldata = State()
+    calldatatelegram = State()
+    calldataemail = State()
     cancel = State()
 
 
@@ -108,17 +105,16 @@ async def process_name(message: types.Message, state: FSMContext):
     """
     async with state.proxy() as data:
         data['projected'] = message.text
-        keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        keyboard.add(types.KeyboardButton(text="Отправить номер телефона 📱", request_contact=True))
-        
-        
-
+        poll_keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        poll_keyboard.add(types.KeyboardButton(text="Телеграмм"))
+        poll_keyboard.add(types.KeyboardButton(text="Электронная почта"))
+        await message.reply("Выберите способ связи:", reply_markup=poll_keyboard)
     await Form.next()
-    await message.reply("Выберите действие:", reply_markup=keyboard)
+#    await message.reply("Выберите действие:", reply_markup=keyboard)
 
 
 # @dp.message_handler(content_types=types.ContentType.CONTACT, state=Person.contact)
-@dp.message_handler(content_types=types.ContentType.CONTACT,state=Form.connect)
+@dp.message_handler(lambda message: message.text == "Телеграмм",state=Form.connect)
 async def process_connect(message: types.Message, state: FSMContext):
     poll_keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     poll_keyboard.add(types.KeyboardButton(text="Да"))
@@ -128,12 +124,48 @@ async def process_connect(message: types.Message, state: FSMContext):
         w = md.text(md.bold('Заказчик: '), md.text(data['name']))   
         e = md.text(md.bold('Проект: '))
         c = md.text(md.quote_html(data['projected']))
-        r = md.text(md.bold('Способ связи: '), md.text(data['connect']))
+        r = md.text(md.bold('Способ связи: '))
+        await message.answer(f"Данные введены верно?\n{w}\n{e}{c}\n{r}@{message.from_user.username}", reply_markup=poll_keyboard,parse_mode=types.ParseMode.MARKDOWN)
+
+    await Form.calldatatelegram.set()
+
+
+
+
+@dp.message_handler(lambda message: message.text == "Электронная почта",state=Form.connect)
+async def process_connect1(message: types.Message, state: FSMContext):
+    await message.answer("Введите почту")
+    poll_keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    poll_keyboard.add(types.KeyboardButton(text="Да"))
+    poll_keyboard.add(types.KeyboardButton(text="Отмена"))
+    async with state.proxy() as data:
+        data['connect'] = message.text
+        w = md.text(md.bold('Заказчик: '), md.text(data['name']))   
+        e = md.text(md.bold('Проект: '))
+        c = md.text(md.quote_html(data['projected']))
+        r = md.text(md.bold('Способ связи: '),md.text(data['connect']))
         await message.answer(f"Данные введены верно?\n{w}\n{e}{c}\n{r}", reply_markup=poll_keyboard,parse_mode=types.ParseMode.MARKDOWN)
 
-    await Form.next()
+    await Form.calldataemail.set()
 
-@dp.message_handler(lambda message: message.text == "Да",state=Form.calldata)
+
+
+
+
+@dp.message_handler(lambda message: message.text == "Да",state=Form.calldatatelegram)
+async def action_yes(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['calldata'] = message.text
+        w = md.text(md.bold('Заказчик: '), md.text(data['name']))
+        e = md.text(md.bold('Проект: '), md.text(data['projected']))
+        r = md.text(md.bold('Способ связи: '))
+        remove_keyboard = types.ReplyKeyboardRemove()
+        await bot.send_message(-1001830422328, f"{w}\n{e}\n{r}@{message.from_user.username}", parse_mode=types.ParseMode.MARKDOWN)
+        await state.finish()
+    
+    await message.reply("Отправляю в канал!")
+
+@dp.message_handler(lambda message: message.text == "Да",state=Form.calldataemail)
 async def action_yes(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['calldata'] = message.text
@@ -145,6 +177,8 @@ async def action_yes(message: types.Message, state: FSMContext):
         await state.finish()
     
     await message.reply("Отправляю в канал!")
+
+
         
 
 @dp.message_handler(lambda message: message.text == "Отмена",state=Form.calldata)
@@ -155,8 +189,22 @@ async def action_cancel(message: types.Message, state: FSMContext):
         await message.answer(f"Упс, что-то пошло не так. Нажмите /reg")
     await state.finish()
 
+@dp.message_handler(lambda message: message.text == "Отмена",state=Form.calldatatelegram)
+async def action_cancel(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['calldata'] = message.text
+        remove_keyboard = types.ReplyKeyboardRemove()
+        await message.answer(f"Упс, что-то пошло не так. Нажмите /reg")
+    await state.finish()
 
 
+@dp.message_handler(lambda message: message.text == "Отмена",state=Form.calldataemail)
+async def action_cancel(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['calldata'] = message.text
+        remove_keyboard = types.ReplyKeyboardRemove()
+        await message.answer(f"Упс, что-то пошло не так. Нажмите /reg")
+    await state.finish()
 
 
 
