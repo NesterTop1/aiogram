@@ -1,28 +1,27 @@
 from aiogram.types import reply_keyboard
-#from config import *
-#from sqlite import *
-#from buttons import *
-#from states import *
-#from freesteam import parse_link
 
 import logging
-
-import aiogram.utils.markdown as md
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import ParseMode
+from aiogram.types import ParseMode, CallbackQuery
 from aiogram.utils import executor
-from aiogram.dispatcher.filters import Text
-from aiogram.dispatcher import filters
-import asyncio
+import aiogram.utils.markdown as md
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
-from config import TOKEN
+
+logging.basicConfig(level=logging.INFO)
+
+from config import TOKEN, chtid
+#from config import chtid
 
 
+bot = Bot(token=TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 
 HELP_COMMAND = """
 /start - Начать работу с ботом
@@ -32,23 +31,17 @@ HELP_COMMAND = """
 /channel - Наш канал
 """
 
-bot = Bot(token=TOKEN)
-
-dp = Dispatcher(bot, storage=MemoryStorage())
 
 class Form(StatesGroup):
-    name = State()  
-    projected = State()
-    connect = State()  
-    calldata = State()
-
-
+    find = State()
+    job = State()
+    req = State()
+    contact = State()
+    check = State()
 
 @dp.message_handler(commands=['start'])
 async def send_welcome(message: types.Message):
     await message.answer("Привет! Начни работу со мной! Для регистрации нажми /reg")
-
-
 
 @dp.message_handler(commands=['help'])
 async def send_help(message: types.Message):
@@ -65,75 +58,117 @@ async def send_channel(message: types.Message):
     await message.answer("Наш канал - @zeroem0tion")
 
 
-
+# Handler to start the conversation
 @dp.message_handler(commands='reg')
 async def cmd_start(message: types.Message):
-    await Form.name.set()
-    await message.reply("Как тебя зовут?")
+    await message.answer("Кого вы ищете?")
+    await Form.find.set()
 
-@dp.message_handler(state=Form.name)
+
+# Handler to handle the name state
+@dp.message_handler(state=Form.find)
 async def process_name(message: types.Message, state: FSMContext):
-    """
-    Process user name
-    """
     async with state.proxy() as data:
-        data['name'] = message.text
-
-    await Form.next()
-    await message.reply("Опишите ваш проект")
-
-@dp.message_handler(state=Form.projected)
-async def process_name(message: types.Message, state: FSMContext):
-    """
-    Process user name
-    """
-    async with state.proxy() as data:
-        data['projected'] = message.text
-
-    await Form.next()
-    await message.reply("Выберите способ связи")
-
-
-
-@dp.message_handler(state=Form.connect)
-async def process_connect(message: types.Message, state: FSMContext):
-    poll_keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    poll_keyboard.add(types.KeyboardButton(text="Да"))
-    poll_keyboard.add(types.KeyboardButton(text="Отмена"))
-    async with state.proxy() as data:
-        data['connect'] = message.text
-        question = (md.text(md.text('Заказчик:', md.text(data['name'])), md.text('Проект:', md.text(data['projected'])),
-                            md.text('Способ связи:', data['connect']), sep='\n'))
-        await message.answer(f"Данные введены верно? {question}" , reply_markup=poll_keyboard)
-
+        data['find'] = message.text
+    await message.answer("Опишите требования к вакансии")
     await Form.next()
 
-#@dp.message_handler(state=Form.calldata)
-@dp.message_handler(lambda message: message.text == "Да",state=Form.calldata)
-async def action_yes(message: types.Message, state: FSMContext):
+
+# Handler to handle the job state
+@dp.message_handler(state=Form.job)
+async def process_job(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
-        data['calldata'] = message.text
-        question = (md.text(md.text('Заказчик:', md.text(data['name'])), md.text('Проект:', md.text(data['projected'])),
-                            md.text('Способ связи:', data['connect']), sep='\n'))
-        remove_keyboard = types.ReplyKeyboardRemove()
-        await bot.send_message(-1001830422328, f"{question}")
-        await state.finish()
-    
-    await message.reply("Отправляю в канал!")
-        
-    
-    
+        data['job'] = message.text
+    await message.answer("Опишите условия работы")
+    await Form.next()
+
+@dp.message_handler(state=Form.req)
+async def process_req(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['req'] = message.text
+    await message.answer("Как с вами связаться? Укажите почту или telegram_id")
+    await Form.next()
+
+@dp.message_handler(state=Form.contact)
+async def process_contact(message: types.Message, state: FSMContext):
+
+    async with state.proxy() as data:
+        data['contact'] = message.text
+        w = md.text(md.bold('*Позиция*:'), md.text(data['find']))
+        e = md.text(md.bold('*Требования*:'), md.text(data['job']))
+        c = md.text(md.bold('Условия:'), md.text(data['req']))
+        r = md.text(md.bold('Контакты:'), md.text(data['contact']))
+        urlkb = InlineKeyboardMarkup(row_width=2)
+        Button = InlineKeyboardButton(text='Да', callback_data="yes")
+        Button2 = InlineKeyboardButton(text='Нет', callback_data="no")
+        urlkb.add(Button, Button2)
+        await message.answer(f"Данные введены верно?\n{w}\n{e}\n{c}\n{r}", reply_markup=urlkb)
+        #await message.answer(md.text(
+        #    md.bold('Данные введены верно?'),
+        #    md.bold('\nПозиция: '), md.text(data['find']),
+        #    md.bold('\nТребования: '), md.text(data['job']),
+        #    md.bold('\nТребования: '), md.text(data['req']),
+        #    md.bold('\nКонтакты: '), md.text(data['contact'])
+        #), reply_markup=urlkb)
+
+        #await message.answer(f"Данные введены верно?\n{w}\n{e}{c}\n{r}", reply_markup=urlkb)
+
+    await Form.next()
 
 
-@dp.message_handler(lambda message: message.text == "Отмена",state=Form.calldata)
-async def action_cancel(message: types.Message, state: FSMContext):
+# Handler to handle the contact state and send the message to the admin
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('yes'),state=Form.check)
+async def process_check(callback: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
-        data['calldata'] = message.text
-        remove_keyboard = types.ReplyKeyboardRemove()
-        await message.answer(f"Упс, что-то пошло не так. Нажмите /reg")
+        #data['check'] = message.text
+        await callback.message.answer(f"Заявка отправлена на модерацию")
+        # Sending message to the admin
+        await bot.send_message(chat_id=chtid, text=f"*ВАКАНСИЯ*:\n\n"
+                                                       f"Позиция: {data['find']}\n\n"
+                                                       f"Требования: {data['job']}\n\n"
+                                                       f"Условия: {data['req']}\n\n"
+                                                       f"Контакты: {data['contact']}",
+                               reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                                   [
+                                       types.InlineKeyboardButton(text="Aprove", callback_data="approve"),
+                                       types.InlineKeyboardButton(text="Not", callback_data="not_approve"),
+                                   ]
+                               ]))
+
     await state.finish()
 
 
+@dp.callback_query_handler(lambda c: c.data == 'no',state=Form.check)
+async def process_no(callback: types.CallbackQuery):
+    await callback.message.answer(f"Введите данные заново:\n"
+                                                       f"Для этого нажмите /req")
+    await Form.first()
+
+
+
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('approve'))
+async def process_callback_approve(callback_query: types.CallbackQuery):
+    # Get data from callback
+    data = callback_query.data
+    message_id = callback_query.message.message_id
+
+    # Get message from the admin chat
+    message = await bot.send_message(chat_id='-1001830422328',
+                                        text=callback_query.message.text,
+                                        reply_markup=callback_query.message.reply_markup)
+
+    # Edit original message to indicate success
+    await bot.edit_message_text(text="Сообщение успешно отправлено в канал!", chat_id=callback_query.message.chat.id,
+                                message_id=message_id)
+
+
+
+
+# Handler to handle the not approve button press
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('not_approve'))
+async def process_callback_not_approve(callback_query: types.CallbackQuery):
+    message_id = callback_query.message
 
 
 
