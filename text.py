@@ -38,24 +38,26 @@ bot = Bot(token=TOKEN)
 
 dp = Dispatcher(bot, storage=MemoryStorage())
 
-
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-     await message.answer(md.text(
-            md.bold('Info about commands:\n'),
-            md.text('🔸', md.bold('/cs'), md.code(' - Create Story')),
-            md.text('🔸', md.bold('/cb'), md.code(' - Create Bug')),
-            sep='\n',
-        ),
-        parse_mode=types.ParseMode.MARKDOWN_V2,
-    )
-    
+class Person(StatesGroup): 
+    contact = State()
+    connect = State()  
+    calldata = State()
+    cancel = State()
 
 
+@dp.message_handler(commands='start')
+async def get_age(msg: types.Message):
+     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+     keyboard.add(types.KeyboardButton(text="Отправить номер телефона 📱", request_contact=True))
+     await msg.answer("Отправь свой контакт:", reply_markup=keyboard)
+     await Person.contact.set()
+     return
 
 
-
-
+@dp.message_handler(content_types=types.ContentType.CONTACT, state=Person.contact)
+async def contacts(msg: types.Message, state: FSMContext):
+    await msg.answer(f"Твой номер успешно получен: @{msg.from_user.username}", reply_markup=types.ReplyKeyboardRemove())
+    await state.finish()
 
 
 
