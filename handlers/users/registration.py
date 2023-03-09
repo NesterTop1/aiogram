@@ -9,31 +9,36 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ParseMode, CallbackQuery
 from aiogram.utils import executor
 import aiogram.utils.markdown as md
+
+from keyboards.default.main_menu import main_menu
+
+from loader import dp, db, bot
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.types import ReplyKeyboardRemove
+from data.config import TOKEN, ADMINS, CHANNEL_ID
+#from keyboards.default.main_menu import main_menu
 
+
+def convert_markdown(find, job, req, contact, converted_data={}):
+    converted_data['bak'] = md.text(md.bold('ВАКАНСИЯ:'))
+    converted_data['position'] = md.text(md.bold('Позиция: '), md.text(find))
+    converted_data['requirements'] = md.text(md.bold('Требования: '), md.text(job))
+    converted_data['conditions'] = md.text(md.bold('Условия: '), md.text(req))
+    converted_data['contacts'] = md.text(md.bold('Контакты: '), md.text(contact))
+
+    return f"{converted_data['bak']}\n\n" \
+           f"{converted_data['position']}\n\n" \
+           f"{converted_data['requirements']}\n\n" \
+           f"{converted_data['conditions']}\n\n" \
+           f"{converted_data['contacts']}" \
 
 
 logging.basicConfig(level=logging.INFO)
 
-from config import TOKEN, chtid
-#from config import chtid
 
-
-bot = Bot(token=TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
-
-HELP_COMMAND = """
-/start - Начать работу с ботом
-/help - Помощь
-/description - описание бота
-/reg - регистрация заявки
-/channel - Наш канал
-"""
 
 class Form(StatesGroup):
-
     find = State()
     job = State()
     req = State()
@@ -49,27 +54,9 @@ class Form(StatesGroup):
         await Form.finish()
         return await Form.first()
 
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    await message.answer("Привет! Начни работу со мной! Для регистрации нажми /reg")
-
-@dp.message_handler(commands=['help'])
-async def send_help(message: types.Message):
-    await message.reply(text=HELP_COMMAND)
-
-
-@dp.message_handler(commands=['description'])
-async def send_description(message: types.Message):
-    await message.answer("Я бот для создания постов в канале @zeroem0tion")
-
-
-@dp.message_handler(commands=['channel'])
-async def send_channel(message: types.Message):
-    await message.answer("Наш канал - @zeroem0tion")
-
 
 # Handler to start the conversation
-@dp.message_handler(commands='reg')
+@dp.message_handler(commands='registration')
 async def cmd_start(message: types.Message):
     await message.answer("Кого вы ищете?")
     await Form.find.set()
@@ -92,12 +79,14 @@ async def process_job(message: types.Message, state: FSMContext):
     await message.answer("Опишите условия работы")
     await Form.next()
 
+
 @dp.message_handler(state=Form.req)
 async def process_req(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['req'] = message.text
     await message.answer("Как с вами связаться? Укажите почту или telegram_id")
     await Form.next()
+
 
 @dp.message_handler(state=Form.contact)
 async def process_contact(message: types.Message, state: FSMContext):
@@ -113,80 +102,73 @@ async def process_contact(message: types.Message, state: FSMContext):
         urlkb.add(yes_button, no_button)
         await message.answer(
             f"Данные введены верно?\n{position}\n{requirements}\n{conditions}\n{contacts}",
-            reply_markup=urlkb, parse_mode=types.ParseMode.MARKDOWN_V2
+            reply_markup=urlkb, parse_mode=types.ParseMode.MARKDOWN
         )
         await Form.next()
 
 
 # Handler to handle the contact state and send the message to the admin
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('yes'),state=Form.check)
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('yes'), state=Form.check)
 async def process_check(callback: types.CallbackQuery, state: FSMContext):
     async with state.proxy() as data:
-        #data['check'] = message.text
         await callback.message.answer(f"Заявка отправлена на модерацию")
         # Sending message to the admin
-        bak = md.text(md.bold('ВАКАНСИЯ:'))
-        position = md.text(md.bold('Позиция: '), md.text(data['find']))
-        requirements = md.text(md.bold('Требования: '), md.text(data['job']))
-        conditions = md.text(md.bold('Условия: '), md.text(data['req']))
-        contacts = md.text(md.bold('Контакты: '), md.text(data['contact']))
-
-        #text = md.text(bak, '\n\n', position, '\n\n', requirements, '\n\n', conditions, '\n\n', contacts)
-
-
-
-        await bot.send_message(chat_id=chtid, text=f"{bak}\n\n{position}\n\n{requirements}\n\n{conditions}\n\n{contacts}",
-                               parse_mode=types.ParseMode.MARKDOWN_V2,
-                               reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-                                   [
-                                       types.InlineKeyboardButton(text="Aprove", callback_data="approve"),
-                                       types.InlineKeyboardButton(text="Not", callback_data="not_approve"),
-
-                                   ]
-                               ]))
-        await bot.edit_message_reply_markup(chat_id=callback.message.chat.id, message_id=callback.message.message_id,
-                                            reply_markup=None)
+        message = convert_markdown(data['find'],
+                                   data['job'],
+                                   data['req'],
+                                   data['contact'])
+        for admin in ADMINS:
+            await bot.send_message(chat_id=int(admin),
+                                   text=message,
+                                   parse_mode=types.ParseMode.MARKDOWN,
+                                   reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                                       [
+                                           types.InlineKeyboardButton(text="Approve", callback_data='approve'),
+                                           types.InlineKeyboardButton(text="Reject", callback_data="reject"),
+                                    ]
+                                ]))
+            await bot.edit_message_reply_markup(chat_id=callback.message.chat.id,
+                                                message_id=callback.message.message_id,
+                                                reply_markup=None)
     await state.finish()
 
 
-@dp.callback_query_handler(lambda c: c.data == 'no',state=Form.check)
+@dp.callback_query_handler(lambda c: c.data == 'no', state=Form.check)
 async def process_no(callback: types.CallbackQuery):
     await callback.message.answer(f"Введите данные заново:\n"
-                                                       f"Кого вы ищете?")
+                                  f"Кого вы ищете?")
     await Form.first()
-
-
 
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('approve'))
 async def process_callback_approve(callback_query: types.CallbackQuery, state: FSMContext):
     # Get data from callback
+    data = []
+    for i in callback_query.message.text.split('\n\n'):
+        if len(i.split('  ')) == 1:
+            pass
+        else:
+            data.append(i.split('  ')[1])
 
-    data = callback_query.data
-    message_id = callback_query.message.message_id
+    message = convert_markdown(data[0], data[1], data[2], data[3])
 
-
-
-    # Get message from the admin chat
-    message = await bot.send_message(chat_id='-1001830422328',
-                                        text=callback_query.message.text,
-                                        parse_mode=types.ParseMode.MARKDOWN_V2
-                                                  )
+    await bot.send_message(chat_id=CHANNEL_ID,
+                           text=message,
+                           parse_mode=types.ParseMode.MARKDOWN)
 
     # Edit original message to indicate success
-    await bot.edit_message_text(text=f"{callback_query.message.text}\n\nСообщение отправлено в канал",chat_id=callback_query.message.chat.id,parse_mode=types.ParseMode.MARKDOWN_V2,
-                                message_id=message_id)
-    #await bot.send_message(chat_id=chtid,text=callback_query.message.text)
+    await bot.edit_message_text(text=f"{message}\n\nСообщение отправлено в канал",
+                                chat_id=callback_query.message.chat.id, parse_mode=types.ParseMode.MARKDOWN,
+                                message_id=callback_query.message.message_id)
+    # await bot.send_message(chat_id=chtid,text=callback_query.message.text)
     await state.finish()
-    #await Form.first()
-
-
+    # await Form.first()
 
 
 # Handler to handle the not approve button press
-@dp.callback_query_handler(lambda c: c.data and c.data.startswith('not_approve'))
-async def process_callback_not_approve(callback_query: types.CallbackQuery,state: FSMContext):
-    #data = callback_query.data
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('reject'))
+async def process_callback_not_approve(callback_query: types.CallbackQuery, state: FSMContext):
+    # data = callback_query.data
     message_id = callback_query.data
     await bot.send_message(chat_id=callback_query.message.chat.id,
                            text=f"{callback_query.message.text}\n\nСообщение отменено!",
@@ -194,9 +176,5 @@ async def process_callback_not_approve(callback_query: types.CallbackQuery,state
     await bot.edit_message_reply_markup(chat_id=callback_query.message.chat.id,
                                         message_id=callback_query.message.message_id, reply_markup=None)
     await state.finish()
-    #await Form.first()
+    # await Form.first()
 
-
-
-if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)

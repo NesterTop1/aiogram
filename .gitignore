@@ -1,2 +1,4 @@
 config.py
 /test
+/data
+**/__pycache__/
